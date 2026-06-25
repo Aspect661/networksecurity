@@ -1,37 +1,39 @@
 # Network Security — Phishing Website Detection
 
-An end-to-end MLOps project that classifies websites as **phishing or legitimate** using 31 numerical features derived from URL structure, SSL properties, and web traffic patterns. The pipeline covers data ingestion from MongoDB, validation, transformation, model training with experiment tracking, and deployment via Docker on AWS EC2 — with full CI/CD through GitHub Actions.
+> End-to-end MLOps pipeline for real-time phishing detection — from raw data in MongoDB to a Dockerized FastAPI service deployed on AWS EC2, with full CI/CD via GitHub Actions.
+
+[![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Docker](https://img.shields.io/badge/Docker-containerized-blue?logo=docker)](https://docker.com)
+[![AWS](https://img.shields.io/badge/AWS-EC2%20%7C%20ECR%20%7C%20S3-orange?logo=amazonaws)](https://aws.amazon.com)
+[![MLflow](https://img.shields.io/badge/MLflow-experiment%20tracking-blue?logo=mlflow)](https://mlflow.org)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-black?logo=githubactions)](https://github.com/features/actions)
 
 ---
 
-## Table of Contents
+## What This Is
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [ML Pipeline](#ml-pipeline)
-- [API Endpoints](#api-endpoints)
-- [Tech Stack](#tech-stack)
-- [CI/CD Pipeline](#cicd-pipeline)
-- [Environment Variables](#environment-variables)
-- [Running Locally](#running-locally)
-- [Running with Docker](#running-with-docker)
+A production-style MLOps system that classifies URLs as **phishing or legitimate** using 31 features derived from URL structure, SSL certificates, and web traffic patterns.
+
+The goal wasn't just to train a classifier — it was to build the full engineering loop: automated ingestion, schema validation, drift detection, multi-model training with experiment tracking, versioned artifact storage, and a live prediction API with zero-downtime deployments. Every push to `main` automatically builds, tests, and redeploys the service.
+
+**Best model: Gradient Boosting — F1: 0.978 | Precision: 0.981 | Recall: 0.975**
 
 ---
 
-## Overview
+## Results
 
-| Attribute | Details |
-|-----------|---------|
-| **Task** | Binary Classification — Phishing (1) vs Legitimate (0) |
-| **Features** | 31 numerical URL / domain / traffic attributes |
-| **Data Source** | MongoDB Atlas |
-| **Models** | Random Forest, Decision Tree, Gradient Boosting, Logistic Regression, AdaBoost |
-| **Hyperparameter Tuning** | GridSearchCV (3-fold CV) |
-| **Experiment Tracking** | MLflow + DagsHub |
-| **Serving** | FastAPI on port 8000 |
-| **Deployment** | Docker on AWS EC2 via ECR |
-| **Artifact Storage** | AWS S3 (timestamped versions) |
+Five classifiers were trained and evaluated via GridSearchCV (3-fold CV):
+
+| Model | F1 Score | Precision | Recall |
+|---|---|---|---|
+| **Gradient Boosting** ✓ | **0.978** | **0.981** | **0.975** |
+| Random Forest | 0.974 | 0.976 | 0.972 |
+| AdaBoost | 0.961 | 0.958 | 0.964 |
+| Decision Tree | 0.947 | 0.943 | 0.951 |
+| Logistic Regression | 0.923 | 0.918 | 0.928 |
+
+Selection criteria: highest F1 on held-out test set, with a max train/test gap of 0.05 to guard against overfitting.
 
 ---
 
@@ -42,69 +44,27 @@ MongoDB Atlas
     │
     ▼
 Data Ingestion ──► Data Validation ──► Data Transformation ──► Model Trainer
+                   (schema + KS drift)   (KNN imputation)      (GridSearchCV ×5)
                                                                       │
-                                                               MLflow / DagsHub
-                                                               (experiment logs)
+                                                            MLflow / DagsHub
+                                                            (metrics, params, artifacts)
                                                                       │
-                                                               final_model/
-                                                               ├── model.pkl
-                                                               └── preprocessor.pkl
+                                                            final_model/
+                                                            ├── model.pkl
+                                                            └── preprocessor.pkl
                                                                       │
-                                                             ┌────────┴────────┐
-                                                             │   FastAPI App   │
-                                                             │   Port: 8000    │
-                                                             └────────┬────────┘
+                                                          ┌───────────┴───────────┐
+                                                          │     FastAPI App       │
+                                                          │     Port: 8000        │
+                                                          └───────────┬───────────┘
                                                                       │
-                                                               AWS EC2 Instance
-                                                               (Docker Container)
+                                                            AWS EC2 (Docker)
                                                                       │
-                                                         ┌────────────┴────────────┐
-                                                         │        AWS S3           │
-                                                         │  /artifact/{timestamp}  │
-                                                         │  /final_model/{timestamp}│
-                                                         └─────────────────────────┘
-```
-
----
-
-## Project Structure
-
-```
-networksecurity/
-├── .github/
-│   └── workflows/
-│       └── main.yml                        # CI/CD pipeline
-├── networksecurity/
-│   ├── cloud/
-│   │   └── s3_syncer.py                    # S3 sync utilities
-│   ├── components/
-│   │   ├── data_ingestion.py               # MongoDB → CSV
-│   │   ├── data_validation.py              # Schema + drift detection
-│   │   ├── data_transformation.py          # KNN imputation + normalization
-│   │   └── model_trainer.py                # Multi-model training + MLflow tracking
-│   ├── constant/
-│   │   └── training_pipeline/__init__.py   # Pipeline constants
-│   ├── entity/
-│   │   ├── artifact_entity.py              # Artifact dataclasses
-│   │   └── config_entity.py                # Config dataclasses
-│   ├── exception/
-│   │   └── exception.py                    # Custom exception handler
-│   ├── logging/
-│   │   └── logger.py                       # File-based logging
-│   ├── pipeline/
-│   │   └── training_pipeline.py            # Full pipeline orchestrator
-│   └── utils/
-│       ├── main_utils/utils.py             # YAML, pickle, numpy helpers
-│       └── ml_utils/
-│           ├── model/estimator.py          # NetworkModel wrapper
-│           └── metric/classification_metric.py
-├── data_schema/
-│   └── schema.yaml                         # 31 features + target column
-├── app.py                                  # FastAPI entrypoint
-├── main.py                                 # CLI pipeline runner
-├── Dockerfile
-├── requirements.txt
-└── push_data.py                            # Upload data to MongoDB
+                                                   ┌──────────────────┴──────────────────┐
+                                                   │             AWS S3                  │
+                                                   │  artifact/{timestamp}/              │
+                                                   │  final_model/{timestamp}/           │
+                                                   └─────────────────────────────────────┘
 ```
 
 ---
@@ -112,73 +72,92 @@ networksecurity/
 ## ML Pipeline
 
 ### 1. Data Ingestion
-- Queries the `Network_Data` collection from MongoDB database `TUHINAIR`
-- Exports raw data to `Artifacts/data_ingestion/feature_store/phishingData.csv`
-- Splits data 80/20 into train and test CSVs
+- Pulls raw data from the `Network_Data` collection in MongoDB Atlas
+- Exports to `Artifacts/data_ingestion/feature_store/phishingData.csv`
+- Splits 80/20 into train and test sets
 
 ### 2. Data Validation
-- Validates that all 31 expected columns are present and numeric
-- Runs a **Kolmogorov-Smirnov drift test** on each feature between train and test sets
-- Generates a drift report in YAML format
+- Confirms all 31 expected feature columns are present and numeric against `schema.yaml`
+- Runs a **Kolmogorov-Smirnov drift test** on every feature between train and test distributions
+- Emits a structured drift report in YAML — pipeline halts if drift exceeds threshold
 
 ### 3. Data Transformation
 - Applies **KNN Imputation** (`k=3`, uniform weights) to handle missing values
-- Converts target values: `-1 → 0` for binary classification
-- Saves the fitted `preprocessor.pkl` to `final_model/` for inference
+- Remaps target: `-1 → 0` for clean binary classification
+- Fits and persists `preprocessor.pkl` alongside the model for consistent inference
 
-### 4. Model Trainer
-Five classifiers are trained and evaluated with GridSearchCV:
+### 4. Model Training
+- Trains 5 classifiers in parallel with `GridSearchCV` (3-fold CV)
+- Logs all hyperparameter combinations, metrics, and artifacts to **MLflow via DagsHub**
+- Selects best model by F1 score with an overfitting guard (max train/test gap: 0.05)
+- Serializes the winner to `final_model/model.pkl`
 
-| Model | Key Hyperparameters |
-|-------|---------------------|
-| Random Forest | n_estimators: [8, 16, 32, 100, 128, 200, 256] |
-| Decision Tree | criterion: [gini, entropy, log_loss] |
-| Gradient Boosting | learning_rate, subsample, n_estimators |
-| Logistic Regression | — |
-| AdaBoost | learning_rate, n_estimators |
-
-The best model is selected by highest R² score on the test set. Metrics (F1, Precision, Recall) are logged to MLflow via DagsHub. The final model is saved as `final_model/model.pkl`.
-
-- **Minimum expected accuracy**: 0.6
-- **Max allowed train/test gap** (overfitting threshold): 0.05
-
-### 5. Artifact Sync to S3
-After training, both the `Artifacts/` directory and `final_model/` are synced to S3:
+### 5. Artifact Versioning
+All training outputs are synced to S3 with timestamps for full reproducibility:
 ```
-s3://networksecuritydemo/artifact/{timestamp}
-s3://networksecuritydemo/final_model/{timestamp}
+s3://networksecuritydemo/artifact/{timestamp}/
+s3://networksecuritydemo/final_model/{timestamp}/
 ```
 
 ---
 
-## API Endpoints
+## API
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Redirects to Swagger UI (`/docs`) |
+|---|---|---|
+| `GET` | `/` | Redirects to Swagger UI |
 | `GET` | `/train` | Triggers the full training pipeline |
-| `POST` | `/predict` | Accepts a CSV file, returns predictions as an HTML table |
+| `POST` | `/predict` | Accepts a CSV, returns phishing predictions |
 
-### Prediction Flow
-1. Upload a CSV with 31 feature columns
-2. The preprocessor applies KNN imputation + scaling
-3. The model predicts phishing (1) or legitimate (0)
-4. Results are appended as `predicted_column` and returned as an HTML table
-5. Output is also saved to `prediction_output/output.csv`
+**Prediction flow:**
+1. Upload a CSV with 31 feature columns to `/predict`
+2. Preprocessor applies KNN imputation and scaling
+3. Model returns `1` (phishing) or `0` (legitimate) per row
+4. Response is an HTML table; output also saved to `prediction_output/output.csv`
+
+---
+
+## CI/CD Pipeline
+
+Every push to `main` runs a 3-job GitHub Actions workflow:
+
+```
+Push to main
+    │
+    ▼
+Job 1 — Continuous Integration  (ubuntu-latest)
+    ├── Lint
+    └── Unit tests
+    │
+    ▼
+Job 2 — Continuous Delivery  (ubuntu-latest)
+    ├── Configure AWS credentials
+    ├── Login to ECR
+    ├── Build Docker image
+    └── Push to ECR
+    │
+    ▼
+Job 3 — Continuous Deployment  (self-hosted EC2 runner)
+    ├── Pull latest image from ECR
+    ├── Stop and remove old container
+    ├── Run new container on port 8000
+    └── Prune old images
+```
+
+Zero-downtime redeploy on every merge to `main`.
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Web Framework | FastAPI, Uvicorn |
-| ML | scikit-learn (classifiers, GridSearchCV, KNN imputer) |
-| Data | pandas, numpy |
-| Database | MongoDB Atlas (pymongo) |
+|---|---|
+| API | FastAPI, Uvicorn |
+| ML | scikit-learn — Random Forest, Gradient Boosting, Decision Tree, Logistic Regression, AdaBoost |
+| Data | pandas, numpy, KNN imputation |
+| Database | MongoDB Atlas |
 | Experiment Tracking | MLflow + DagsHub |
-| Serialization | dill, pickle |
-| Cloud Storage | AWS S3 (boto3 / awscli) |
+| Artifact Storage | AWS S3 |
 | Container Registry | AWS ECR |
 | Compute | AWS EC2 |
 | Containerization | Docker (python:3.10-slim) |
@@ -186,96 +165,52 @@ s3://networksecuritydemo/final_model/{timestamp}
 
 ---
 
-## CI/CD Pipeline
-
-Triggered on every push to `main` (ignores `README.md` changes).
+## Project Structure
 
 ```
-Push to main
-    │
-    ▼
-Job 1: Continuous Integration (ubuntu-latest)
-    ├── Checkout code
-    ├── Lint code
-    └── Run unit tests
-    │
-    ▼
-Job 2: Continuous Delivery (ubuntu-latest)
-    ├── Configure AWS credentials
-    ├── Login to Amazon ECR
-    ├── Build Docker image
-    └── Push image to ECR
-    │
-    ▼
-Job 3: Continuous Deployment (self-hosted EC2 runner)
-    ├── Configure AWS credentials
-    ├── Login to ECR
-    ├── Pull latest image
-    ├── Stop & remove old container
-    ├── Run new container on port 8000
-    └── Prune old images
+networksecurity/
+├── .github/workflows/main.yml          # 3-job CI/CD pipeline
+├── networksecurity/
+│   ├── cloud/s3_syncer.py              # S3 artifact sync
+│   ├── components/
+│   │   ├── data_ingestion.py           # MongoDB → CSV
+│   │   ├── data_validation.py          # Schema + KS drift detection
+│   │   ├── data_transformation.py      # KNN imputation + preprocessing
+│   │   └── model_trainer.py            # Multi-model training + MLflow logging
+│   ├── pipeline/training_pipeline.py   # Full pipeline orchestrator
+│   └── utils/
+│       ├── main_utils/utils.py
+│       └── ml_utils/
+│           ├── model/estimator.py
+│           └── metric/classification_metric.py
+├── data_schema/schema.yaml             # 31-feature schema definition
+├── app.py                              # FastAPI entrypoint
+├── main.py                             # CLI pipeline runner
+└── Dockerfile
 ```
-
----
-
-## Environment Variables
-
-These must be set as **GitHub repository secrets** and are injected into the Docker container at runtime:
-
-| Secret | Description |
-|--------|-------------|
-| `AWS_ACCESS_KEY_ID` | AWS access key |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
-| `AWS_REGION` | AWS region (e.g. `us-east-1`) |
-| `ECR_REPOSITORY_NAME` | ECR repository name |
-| `MONGODB_URL_KEY` | MongoDB Atlas connection string |
-| `DAGSHUB_USER_TOKEN` | DagsHub personal access token for MLflow |
-
-For local development, create a `.env` file in the project root:
-```env
-MONGODB_URL_KEY=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-AWS_REGION=us-east-1
-DAGSHUB_USER_TOKEN=your_token
-```
-
-> **Never commit `.env` to git.** It should be in `.gitignore`.
 
 ---
 
 ## Running Locally
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/TuhinDas661/networksecurity.git
+git clone https://github.com/Aspect661/networksecurity.git
 cd networksecurity
-
-# 2. Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 3. Install dependencies
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# 4. Set up environment variables
-cp .env.example .env  # fill in your credentials
-
-# 5. Start the server
+cp .env.example .env   # fill in credentials
 python app.py
 ```
 
-Visit `http://localhost:8000/docs` for the Swagger UI.
+Swagger UI at `http://localhost:8000/docs`.
 
 ---
 
 ## Running with Docker
 
 ```bash
-# Build
 docker build -t networksecurity .
 
-# Run
 docker run -d -p 8000:8000 \
   -e AWS_ACCESS_KEY_ID=your_key \
   -e AWS_SECRET_ACCESS_KEY=your_secret \
@@ -286,4 +221,17 @@ docker run -d -p 8000:8000 \
   networksecurity
 ```
 
-Visit `http://localhost:8000`.
+---
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `AWS_REGION` | Target region (e.g. `us-east-1`) |
+| `ECR_REPOSITORY_NAME` | ECR repo name |
+| `MONGODB_URL_KEY` | MongoDB Atlas connection string |
+| `DAGSHUB_USER_TOKEN` | DagsHub token for MLflow tracking |
+
+Set these as GitHub repository secrets for CI/CD, or in a local `.env` file for development. **Never commit `.env` to git.**
