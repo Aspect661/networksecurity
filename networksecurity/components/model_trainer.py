@@ -17,9 +17,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import (AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier)
 
 import mlflow
-
 import dagshub
-dagshub.init(repo_owner='tuhindas01.official', repo_name='networksecurity', mlflow=True)
 
 class ModelTrainer:
     def __init__(self, model_trainer_config: ModelTrainerConfig, data_transformation_artifact: DataTransformationArtifact):
@@ -31,6 +29,7 @@ class ModelTrainer:
             raise NetworkSecurityException(e, sys)
 
     def track_mlflow(self, best_model, classification_metric):
+        dagshub.init(repo_owner='tuhindas01.official', repo_name='networksecurity', mlflow=True)
         with mlflow.start_run():
             f1_score = classification_metric.f1_score
             precision_score = classification_metric.precision_score
